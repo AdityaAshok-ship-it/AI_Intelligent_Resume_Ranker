@@ -120,6 +120,87 @@ FOUNDING_YEAR_MAP: dict = {
     "nykaa": 2012,
 }
 
+# Technology inception dates — for the skill-duration anachronism gate (Phase 2b).
+# A candidate cannot have used a technology for more months than it has existed.
+# Each value is the EARLIEST credible public availability (paper preprint or first
+# library/product release), web-verified 2026-06 (sources in commit message).
+# Only NAMED artifacts with a hard release date are gated. Generic concepts
+# (Embeddings, NLP, Vector Search, Semantic Search, Prompt Engineering,
+# "Fine-tuning LLMs", LLMs) are intentionally EXCLUDED — undatable, false-positive
+# risk. Tools older than ~2018-05 (FAISS 2017, scikit-learn, Elasticsearch, PyTorch,
+# TensorFlow, YOLO, GANs) can NEVER be anachronistic at this corpus's 96-month max
+# duration, so they are omitted (their inclusion would be inert).
+# ── H5 founding gate: real-company inception dates ────────────────────────────
+# The corpus uses a FIXED pool of 63 company names (verified by enumeration):
+# 8 fictional + 55 real. H5 flags a resume if ANY role at a REAL company starts
+# before that company was founded (role.start_date.year < founding_year). Per the
+# user decision, FICTIONAL-company roles are SKIPPED (unknowable founding), but
+# real-company roles in the same resume are STILL validated.
+#
+# Only 5 companies can actually bind (founded AFTER their earliest role-start in the
+# data) — these were verified to the YEAR against authentic/first-party sources
+# (2026-06-18); the rest post-date every role that references them, so their exact
+# year is non-binding and taken from established public record.
+FICTIONAL_COMPANIES: frozenset = frozenset({
+    "wayne enterprises", "initech", "pied piper", "acme corp",
+    "globex inc", "hooli", "dunder mifflin", "stark industries",
+})
+COMPANY_FOUNDING: dict = {                 # lowercased company name -> founding year
+    # — Binding companies (founding > earliest data role-start) — WEB-VERIFIED —
+    "cred": 2018,            # Kunal Shah, 2018
+    "glance": 2019,          # InMobi Glance, launched 2019 (yourstory.com/2019/04)
+    "rephrase.ai": 2019,     # Bengaluru, 2019 (later acq. Adobe Nov 2023)
+    "sarvam ai": 2023,       # sarvam.ai/about-us, Aug 2023
+    "krutrim": 2023,         # Krutrim Si Designs, 2023 (Ola; launched 15 Dec 2023)
+    # — Non-binding (every data role post-dates founding) — established record —
+    "infosys": 1981, "wipro": 1945, "tcs": 1968, "capgemini": 1967,
+    "accenture": 1989, "hcl": 1976, "mindtree": 1999, "cognizant": 1994,
+    "tech mahindra": 1986, "mphasis": 1998,
+    "swiggy": 2014, "razorpay": 2014, "zomato": 2008, "flipkart": 2007,
+    "meesho": 2015, "nykaa": 2012, "inmobi": 2007, "zoho": 1996, "ola": 2010,
+    "vedantu": 2014, "byju's": 2011, "policybazaar": 2008, "paytm": 2010,
+    "freshworks": 2010, "upgrad": 2015, "pharmeasy": 2015, "phonepe": 2015,
+    "dream11": 2008, "unacademy": 2015,
+    "genpact ai": 1997, "aganitha": 2016, "niramai": 2016, "saarthi.ai": 2017,
+    "wysa": 2015, "mad street den": 2013, "haptik": 2013, "verloop.io": 2016,
+    "observe.ai": 2017, "yellow.ai": 2016, "locobuzz": 2015,
+    "google": 1998, "netflix": 1997, "amazon": 1994, "meta": 2004,
+    "salesforce": 1999, "microsoft": 1975, "uber": 2009, "adobe": 1982,
+    "linkedin": 2003, "apple": 1976,
+}
+
+# Every date below is the EARLIEST authentic first-party public artifact, verified
+# 2026-06-18 against PRIMARY sources only (arXiv submission pages, the PyPI registry's
+# immutable upload timestamps, official repo CHANGELOGs, first-party vendor blogs).
+# NO secondary/editable sources (no Wikipedia/Medium/explainer sites). For databases
+# the earliest PyPI client release is used as an authentic "existed-by" anchor.
+TECH_INCEPTION: dict = {                        # skill name (lowercased) -> (year, month)
+    "lora": (2021, 6),                          # arXiv:2106.09685 v1, 17 Jun 2021
+    "qlora": (2023, 5),                         # arXiv:2305.14314 v1, 23 May 2023
+    "peft": (2023, 1),                          # PyPI peft 0.0.1, 19 Jan 2023
+    "rag": (2020, 5),                           # arXiv:2005.11401 v1, 22 May 2020
+    "langchain": (2022, 10),                    # PyPI langchain 0.0.1, 25 Oct 2022
+    "llamaindex": (2022, 11),                   # PyPI gpt-index 0.0.4, 22 Nov 2022
+    "pinecone": (2020, 12),                     # PyPI pinecone-client 0.7.5, 31 Dec 2020
+    "milvus": (2019, 6),                        # PyPI pymilvus 0.1.0, 16 Jun 2019
+    "qdrant": (2021, 2),                        # PyPI qdrant-client 0.1.0, 9 Feb 2021
+    "weaviate": (2019, 11),                     # PyPI weaviate-client 0.0.0, 4 Nov 2019
+    "pgvector": (2021, 4),                      # pgvector CHANGELOG 0.1.0 "First release", 20 Apr 2021
+    "sentence transformers": (2019, 7),         # PyPI sentence-transformers 0.1.0, 25 Jul 2019
+    "haystack": (2019, 11),                     # PyPI farm-haystack 0.1.0.post2, 28 Nov 2019
+    "opensearch": (2021, 4),                    # AWS first-party announcement blog, 12 Apr 2021
+    "hugging face transformers": (2018, 11),    # PyPI pytorch-pretrained-bert 0.1.1, 17 Nov 2018
+}
+# Slack: tolerate preprint/beta usage a few months pre-release + duration rounding.
+SKILL_ANACHRONISM_SLACK_MONTHS = 6
+
+# Title-chaser / tenure signal — JD "Things we explicitly do NOT want" (listed FIRST):
+# "switching companies every 1.5 years ... We need someone who plans to be here for 3+ years."
+# Measurable proxy: average tenure per DISTINCT employer. Require >=3 employers so a single
+# short stint or a 1-2 role career is never flagged. 18 mo == the JD's literal "1.5 years".
+TITLE_CHASE_MIN_COMPANIES = 3
+TITLE_CHASE_MAX_AVG_TENURE_MONTHS = 18
+
 ENG_TITLE_KEYWORDS: frozenset = frozenset({
     "engineer", "developer", "scientist", "sde", "swe", "programmer",
     "devops", "mlops", "backend", "frontend", "fullstack", "full-stack",
@@ -236,6 +317,23 @@ def parse_date(s: str) -> date:
 def months_between(start: date, end: date) -> int:
     """Non-negative integer months (floor)."""
     return max(0, (end.year - start.year) * 12 + (end.month - start.month))
+
+
+# Degree seniority for the education-integrity gate: Bachelor < Master < Doctorate.
+_DEGREE_RANK: dict = {
+    "b.tech": 1, "b.e": 1, "b.sc": 1, "bachelor": 1,
+    "m.tech": 2, "m.e": 2, "m.s": 2, "m.sc": 2, "mba": 2, "master": 2,
+    "ph.d": 3, "phd": 3, "doctor": 3,
+}
+
+
+def _degree_rank(degree: str) -> int:
+    """Map a degree string to its seniority (1=Bachelor, 2=Master, 3=PhD; 0=unknown)."""
+    dl = (degree or "").lower()
+    for key, rank in _DEGREE_RANK.items():
+        if key in dl:
+            return rank
+    return 0
 
 
 def is_services_role(company: str) -> bool:
@@ -500,7 +598,35 @@ def parse_features(cand: dict) -> dict:
             h4_flag = True
             break
 
-    honeypot_flag = h1_flag or h2_flag or h3_flag or h4_flag
+    # H5: a role at a REAL company that starts before that company was founded
+    # (role.start_date.year < founding_year). Skip FICTIONAL-company roles (their
+    # founding is unknowable) but still validate every real-company role in the same
+    # resume — a scammer can't hide an impossible real-company claim behind Hooli.
+    # Year-granularity + strict '<' so a company founded in 2018 may hire in 2018.
+    # UNKNOWN companies (in neither map) are SKIPPED at ROLE granularity, never
+    # flagged — we only flag what we can PROVE impossible — and recorded in
+    # h5_unmapped so a future corpus with new companies surfaces them for
+    # verification instead of silently eroding the gate (skipping the whole resume
+    # would instead let a scammer neutralise H5 by adding one unmapped company).
+    h5_flag = False
+    _h5_unmapped: list = []
+    for role in career:
+        comp = (role.get("company", "") or "").strip().lower()
+        if not comp or comp in FICTIONAL_COMPANIES:
+            continue                                   # skip empty / fictional roles
+        founded = COMPANY_FOUNDING.get(comp)
+        if founded is None:
+            _h5_unmapped.append(role.get("company", "").strip())  # unknown → skip, log
+            continue
+        try:
+            role_start_h5 = parse_date(role["start_date"])
+        except (KeyError, ValueError):
+            continue
+        if role_start_h5.year < founded:
+            h5_flag = True
+    h5_unmapped = "; ".join(sorted(set(_h5_unmapped)))
+
+    honeypot_flag = h1_flag or h2_flag or h3_flag or h4_flag or h5_flag
 
     # top_skills_text: top 3 non-AI-buzzword skills by duration_months (for reasoning.py).
     # AI-buzzword skills excluded (keyword-stuffer attack surface; EC-7).
@@ -541,6 +667,93 @@ def parse_features(cand: dict) -> dict:
                 break
         if founding_date_anomaly:
             break
+
+    # ── Skill-duration anachronism (Phase 2b gate) ────────────────────────────
+    # Flag if a candidate claims a NAMED technology for more months than it has
+    # existed (+slack). Physical impossibility → flawed/fabricated resume. Applied
+    # as a HARD pre-sort exclusion in rank.py, after the H1–H4 honeypot gate.
+    skill_anachronism_flag = False
+    _anachronisms: list = []
+    for s in skills:
+        nm = (s.get("name", "") or "").strip().lower()
+        inc = TECH_INCEPTION.get(nm)
+        if inc is None:
+            continue
+        dur = s.get("duration_months")
+        if not isinstance(dur, int):
+            continue
+        available = months_between(date(inc[0], inc[1], 1), REFERENCE_DATE)
+        if dur > available + SKILL_ANACHRONISM_SLACK_MONTHS:
+            skill_anachronism_flag = True
+            _anachronisms.append(f"{s.get('name')}:{dur}>{available}mo")
+    skill_anachronism_detail = "; ".join(_anachronisms)
+
+    # ── Education-timeline integrity (Phase 2b gate) ──────────────────────────
+    # Flawed-resume conditions the H1–H4 honeypot rules never inspect:
+    #   (a) degree-order reversal — a higher degree ENDS before a lower one STARTS
+    #   (b) overlapping full-time degrees at DIFFERENT institutions (>=2y concurrent)
+    #   (c) negative span — a degree ends before it starts (degenerate impossibility)
+    # Degree NAMES are NOT judged: "B.Tech Artificial Intelligence" is a valid degree.
+    education_anomaly_flag = False
+    _edu_reasons: list = []
+    _edu_spans: list = []
+    for e in edu:
+        sy, ey = e.get("start_year"), e.get("end_year")
+        inst = (e.get("institution", "") or "").strip().lower()
+        deg = e.get("degree", "")
+        if isinstance(sy, int) and isinstance(ey, int):
+            if ey < sy:
+                education_anomaly_flag = True
+                _edu_reasons.append(f"neg-span {deg} {sy}-{ey}")
+            _edu_spans.append((sy, ey, inst, deg))
+    # (a) reversal: higher degree finishes before a lower degree begins
+    for i, a in enumerate(edu):
+        for j, b in enumerate(edu):
+            if i == j:
+                continue
+            ra, rb = _degree_rank(a.get("degree")), _degree_rank(b.get("degree"))
+            ay, by = a.get("end_year"), b.get("start_year")
+            if ra > rb > 0 and isinstance(ay, int) and isinstance(by, int) and ay < by:
+                education_anomaly_flag = True
+                _edu_reasons.append(f"reversal {a.get('degree')}<{b.get('degree')}")
+    # (b) impossible CONCURRENCY: two degrees enrolled at overlapping times whose
+    #     level gap is too large to be legitimate. A PhD requires a COMPLETED
+    #     bachelor's, so a Bachelor's and a PhD (degree-rank gap >= 2) cannot
+    #     overlap in time. Same-level (gap 0) and adjacent-level (gap 1) overlaps
+    #     are ALLOWED — a candidate may legitimately pursue two correspondence/
+    #     remote or integrated/dual degrees at once (e.g. distance MBA + M.S.,
+    #     5-yr B.Tech+M.Tech, integrated MS-PhD). Institution is irrelevant: remote
+    #     degrees are by definition at a different institution. All pairs checked
+    #     (<=5 education entries), not just adjacent, so a non-adjacent B.Sc/Ph.D
+    #     overlap is not missed.
+    _edu_spans.sort()
+    for k in range(len(_edu_spans)):
+        for m in range(k + 1, len(_edu_spans)):
+            s1, e1, _i1, d1 = _edu_spans[k]
+            s2, e2, _i2, d2 = _edu_spans[m]
+            r1, r2 = _degree_rank(d1), _degree_rank(d2)
+            overlap_years = min(e1, e2) - max(s1, s2)
+            if r1 and r2 and abs(r1 - r2) >= 2 and overlap_years >= 1:
+                education_anomaly_flag = True
+                _edu_reasons.append(f"overlap {d1}+{d2} {overlap_years}y(gap{abs(r1 - r2)})")
+    education_anomaly_detail = "; ".join(_edu_reasons)
+
+    # ── Title-chaser / tenure (JD "do NOT want") ──────────────────────────────
+    # Average tenure per DISTINCT employer. >=3 employers required so a single short
+    # stint (or a 1-2 role career) is never flagged. avg==0 (all durations missing) is
+    # NOT treated as hopping — that is a data gap, handled by the honeypot rules.
+    company_names = {
+        (r.get("company", "") or "").strip().lower()
+        for r in career if (r.get("company", "") or "").strip()
+    }
+    num_companies = len(company_names)
+    avg_company_tenure_months = (
+        total_tenure / num_companies if num_companies else 0.0
+    )
+    title_chaser_flag = (
+        num_companies >= TITLE_CHASE_MIN_COMPANIES
+        and 0 < avg_company_tenure_months < TITLE_CHASE_MAX_AVG_TENURE_MONTHS
+    )
 
     # ── Keyword-stuffer inputs ────────────────────────────────────────────────
 
@@ -609,14 +822,25 @@ def parse_features(cand: dict) -> dict:
         "h2_flag": h2_flag,
         "h3_flag": h3_flag,
         "h4_flag": h4_flag,
+        "h5_flag": h5_flag,
         "honeypot_flag": honeypot_flag,
         "founding_date_anomaly": founding_date_anomaly,
+        "h5_unmapped": h5_unmapped,           # companies in neither map (future-proofing)
+        # Phase 2b discrepancy gates (hard-exclude, applied after honeypots)
+        "skill_anachronism_flag": skill_anachronism_flag,
+        "skill_anachronism_detail": skill_anachronism_detail,
+        "education_anomaly_flag": education_anomaly_flag,
+        "education_anomaly_detail": education_anomaly_detail,
         # Keyword-stuffer inputs
         "ai_skill_count": ai_skill_count,
         # Sub-signals for calibration / Phase 0 exit-gate eyeballing
         "career_history_length": len(career),
         "career_span_months": career_span_months,
         "total_tenure_months": total_tenure,
+        # Title-chaser / tenure signal (JD "do NOT want")
+        "num_companies": num_companies,
+        "avg_company_tenure_months": avg_company_tenure_months,
+        "title_chaser_flag": title_chaser_flag,
         "yoe_months_computed": yoe_months,
         "current_role_months": current_role_months,
         "has_pre_llm_ml": has_pre_llm_ml,
@@ -669,7 +893,7 @@ INSPECT_COLS = [
     "is_eng_title", "built_real_system", "product_vs_services",
     "hands_on_code_18mo", "d1_research_only", "d2_recent_llm_only",
     "d4_all_consulting", "d5_cv_speech_robotics",
-    "honeypot_flag", "h1_flag", "h2_flag", "h3_flag", "h4_flag",
+    "honeypot_flag", "h1_flag", "h2_flag", "h3_flag", "h4_flag", "h5_flag",
     "founding_date_anomaly",
     "ai_skill_count", "staleness_days", "recruiter_response_rate",
     "open_to_work_flag", "notice_period_days",
@@ -807,6 +1031,21 @@ def main() -> None:
     df.to_parquet(features_path, index=False, engine="pyarrow")
     size_mb = features_path.stat().st_size / 1e6
     print(f"  {features_path}: {size_mb:.1f} MB, {len(df)} rows, {len(df.columns)} cols")
+
+    # ── H5 coverage diagnostic: surface any company in neither map ─────────────
+    if "h5_unmapped" in df.columns:
+        unmapped = set()
+        for s in df["h5_unmapped"]:
+            if s:
+                unmapped.update(s.split("; "))
+        if unmapped:
+            print(
+                f"  H5 WARNING: {len(unmapped)} company name(s) in NEITHER "
+                f"COMPANY_FOUNDING nor FICTIONAL_COMPANIES — H5 skipped them "
+                f"(no false flags, but verify their founding and add): {sorted(unmapped)}"
+            )
+        else:
+            print("  H5 company coverage: all companies mapped (0 unmapped). [OK]")
 
     # ── Write candidate_ids.npy ───────────────────────────────────────────────
 

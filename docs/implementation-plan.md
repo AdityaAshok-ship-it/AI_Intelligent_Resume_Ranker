@@ -155,7 +155,7 @@ Make these explicit *before* writing scorers — every downstream phase reads th
 ---
 
 ## Phase 1 — The relevance rubric + calibration (THE differentiator)
-*The 30%. Pure judgment. This is what separates you from every "asked Claude for a ranker" team.*
+*The 30%. Pure judgment. This is what separates you from every generic-ranker team.*
 
 **Objective:** a written model of what Redrob's *hidden* ground truth rewards — reverse-engineered from the JD's subtext — implemented as the base scorer, then **calibrated against the 50-sample**.
 

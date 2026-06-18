@@ -45,11 +45,47 @@ def get_honeypot_mask(features: pd.DataFrame) -> np.ndarray:
     return features["honeypot_flag"].values.astype(bool)
 
 
+def get_anachronism_mask(features: pd.DataFrame) -> np.ndarray:
+    """
+    Skill-duration anachronism gate (True = exclude). Phase 2b.
+
+    Fires when a candidate claims a NAMED technology for more months than the
+    technology has existed (+slack) — a physical impossibility, i.e. a fabricated
+    or flawed resume. The flag is pre-computed in precompute.py against a
+    web-verified TECH_INCEPTION map (only datable named artifacts; generic
+    concepts and pre-2018 tools are intentionally excluded — see precompute.py).
+
+    Applied as a HARD pre-sort exclusion AFTER the H1–H4 honeypot gate.
+    Guarded: if the column is absent (stale features.parquet), returns all-False
+    and the caller proceeds as before — re-run precompute.py --dry-run to enable.
+    """
+    if "skill_anachronism_flag" not in features.columns:
+        return np.zeros(len(features), dtype=bool)
+    return features["skill_anachronism_flag"].values.astype(bool)
+
+
+def get_education_mask(features: pd.DataFrame) -> np.ndarray:
+    """
+    Education-timeline integrity gate (True = exclude). Phase 2b.
+
+    Fires on flawed-resume conditions the honeypot rules never inspect:
+    degree-order reversal (higher degree ends before a lower one starts),
+    overlapping full-time degrees at different institutions (>=2y concurrent),
+    or negative degree span. Degree NAMES are not judged ("B.Tech Artificial
+    Intelligence" is valid). Pre-computed in precompute.py.
+
+    Guarded identically to get_anachronism_mask (all-False if column absent).
+    """
+    if "education_anomaly_flag" not in features.columns:
+        return np.zeros(len(features), dtype=bool)
+    return features["education_anomaly_flag"].values.astype(bool)
+
+
 def get_stuffer_flag(features: pd.DataFrame) -> np.ndarray:
     """
     Keyword-stuffer flag: non-eng title AND ≥3 AI skills AND no built_real_system.
 
-    FLAG only — do not double-penalise. Career-first 65% weight already demotes
+    FLAG only — do not double-penalise. Career-first 70% weight already demotes
     stuffers below genuine fits. Aggressive penalty false-positives genuine
     career-changers (the modal real changer has 2 AI skills — EC-18).
 

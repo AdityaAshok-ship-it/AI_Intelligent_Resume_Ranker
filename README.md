@@ -34,9 +34,9 @@ candidates.jsonl (~100K records)
         1. load artifacts + assert row alignment
         2. cosine(jd_vector, matrix) → sim[100K]          (~25 ms)
         3. rubric base score
-           0.65 × career  +  0.20 × cosine  +  0.10 × skills  +  0.05 × edu  +  logistics
-        4. disqualifier caps D1–D5 (most-restrictive wins; applied before multiplier)
-        5. honeypot exclusion H1–H4 (hard pre-sort exclusion)
+           0.70 × career  +  0.20 × cosine  +  0.10 × skills  +  logistics
+        4. disqualifier caps D1–D6 + visa (most-restrictive wins; applied before multiplier)
+        5. honeypot exclusion H1–H5 + skill-anachronism & education gates (hard pre-sort exclusion)
         6. availability multiplier (continuous; ghost-floor ~0.15)
         7. distinct-float guarantee
         8. sort ↓ → top-150 audit window → take top 100
@@ -52,13 +52,13 @@ candidates.jsonl (~100K records)
 
 | Component | Weight | Signal |
 |---|---|---|
-| Career evidence | **0.65** | Engineering title, shipped production systems, product-company experience, YOE sweet spot (5–9), IC recency |
+| Career evidence | **0.70** | Engineering title, shipped production systems, product-company experience, YOE sweet spot (5–9), IC recency |
 | Semantic similarity | **0.20** | Cosine similarity to JD embedding (bge-base-en-v1.5) |
 | Skills | **0.10** | Redrob assessment scores + GitHub activity (low weight to resist keyword stuffing) |
-| Education | **0.05** | Institution tier (Tier-1 → Tier-4) |
+| ~~Education~~ | **removed** | Dropped 2026-06-18 — the JD names no education/institution-tier criterion (only Indian cities); its 0.05 was folded into career. |
 | Logistics | additive | Notice period, India-based, Tier-1 city, relocation, work-mode preference |
 
-### Disqualifier caps (D1–D5)
+### Disqualifier caps (D1–D6 + location)
 
 Applied to base score before the availability multiplier. Most-restrictive cap wins.
 
@@ -69,10 +69,12 @@ Applied to base score before the availability multiplier. Most-restrictive cap w
 | D3 | No hands-on IC engineering in last 18 months | 0.45 |
 | D4 | Entire career in IT services / consulting, no product-company role | 0.35 |
 | D5 | CV / speech / robotics primary domain, no NLP or IR evidence | 0.50 |
+| D6 | Title-chaser / job-hopper (≥3 employers, <18-mo avg tenure) — JD wants a 3+ yr commitment | 0.50 |
+| location | Non-India **and** not willing to relocate — JD: "we don't sponsor work visas" | 0.55 |
 
-### Honeypot exclusion (H1–H4)
+### Honeypot exclusion (H1–H5) + discrepancy gates
 
-Four timeline-impossibility rules that hard-exclude fabricated candidates before any score is computed. Pre-computed in `precompute.py` and stored in `features.parquet`; `detectors.py` reads the pre-computed flags.
+Five timeline-impossibility rules (H5 = a role at a real company starting before its founding year) hard-exclude fabricated candidates before any score is computed. Two further impossibility gates also hard-exclude: **skill-anachronism** (a named technology claimed for longer than it has existed) and **education-integrity** (reversed/overlapping degree timelines). All pre-computed in `precompute.py` and stored in `features.parquet`; `detectors.py` reads the pre-computed flags.
 
 ### Availability multiplier
 
@@ -85,7 +87,7 @@ Continuous multiplier ∈ [0.15, 1.0] derived from recruiter response rate, stal
 ```
 precompute.py           offline: embeddings + features + JD vector
 rubric.py               base score, disqualifier caps, availability multiplier
-detectors.py            H1–H4 honeypot gate, keyword-stuffer flag, top-150 audit
+detectors.py            H1–H5 honeypot gate + anachronism/education gates, keyword-stuffer flag, top-150 audit
 reasoning.py            fact-grounded reasoning templates + pairwise duplicate check
 rank.py                 in-budget ranking step → top-100 CSV
 calibrate.py            hand-ranking harness (50-sample) for weight validation

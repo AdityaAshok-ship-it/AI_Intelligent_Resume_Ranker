@@ -186,9 +186,9 @@ def run_calibration(sample_path: Path, model_path: Path) -> None:
     # ── 5. Feature-only scoring (no embedding) ────────────────────────────────
 
     from rubric import (
-        compute_career_score, compute_skills_score, compute_edu_score,
+        compute_career_score, compute_skills_score,
         compute_logistics_modifier, compute_base, apply_disqualifier_caps,
-        compute_availability_multiplier, W_CAREER, W_SKILLS, W_EDU,
+        compute_availability_multiplier, W_CAREER, W_SKILLS,
     )
 
     career_scores = compute_career_score(df)
@@ -209,7 +209,7 @@ def run_calibration(sample_path: Path, model_path: Path) -> None:
     df_ranked = df.sort_values("final_no_embed", ascending=False).reset_index(drop=True)
     df_ranked["rank_no_embed"] = range(1, len(df_ranked) + 1)
 
-    print("\n=== Top-15 ranking (zero embedding — career + skills + edu + logistics) ===")
+    print("\n=== Top-15 ranking (zero embedding — career + skills + logistics) ===")
     cols = ["rank_no_embed", "candidate_id", "current_title", "final_no_embed",
             "career_score", "gated_no_embed", "multiplier",
             "is_eng_title", "built_real_system", "honeypot_flag"]

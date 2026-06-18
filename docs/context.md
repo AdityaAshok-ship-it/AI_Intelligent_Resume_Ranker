@@ -15,7 +15,7 @@
 
 Given **100,000 candidate profiles** and **one job description**, build a **CPU-only, offline** system that returns the **top 100 best-fit candidates** as a CSV (`candidate_id, rank, score, reasoning`). The ranking step must run in **≤5 min wall-clock, ≤16 GB RAM, no GPU, no network, ≤5 GB intermediate disk**. Output is scored once against a **hidden ground truth**. **No live leaderboard**, **max 3 submissions**, **last valid submission is final**. *(submission_spec.docx §1–4, 8; README.docx.)*
 
-The win condition is **not the best code** — Claude writes roughly the same ranker for everyone. `[CALL]` It is the best **judgment, trap handling, and defensibility**, plus the ability to explain all of it in a 30-minute live interview (Stage 5).
+The win condition is **not the best code** — a basic ranker looks similar across teams. `[CALL]` It is the best **judgment, trap handling, and defensibility**, plus the ability to explain all of it in a 30-minute live interview (Stage 5).
 
 ---
 

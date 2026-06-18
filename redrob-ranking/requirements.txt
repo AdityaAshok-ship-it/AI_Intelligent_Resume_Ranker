@@ -1,0 +1,7 @@
+sentence-transformers>=2.7.0
+numpy>=1.26.0
+pandas>=2.2.0
+pyarrow>=15.0.0
+torch>=2.2.0          # sentence-transformers backend
+transformers>=4.40.0  # bge-base tokeniser
+streamlit>=1.35.0     # sandbox/app.py

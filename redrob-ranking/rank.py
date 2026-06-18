@@ -14,7 +14,7 @@ Pipeline order (EC-45, EC-46 — caps BEFORE multiplier; exclusion BEFORE multip
     2. cosine(jd_vector, candidate_matrix) → sim[N]
     3. rubric base score (rubric.py)
     4. disqualifier caps → gated  (rubric.py; most-restrictive wins)
-    5. honeypot exclusion → drop H1–H4 rows (detectors.py; hard-exclude)
+    5. honeypot exclusion → drop H1–H5 rows (detectors.py; hard-exclude)
     6. availability multiplier over surviving rows → final = gated × mult
     7. sort final ↓ → top 150 for audit
     8. distinct-float guarantee: descending offsets on top-150 window (EC-47, EC-48)
@@ -112,7 +112,7 @@ def main() -> None:
     print("Computing cosine similarity ...")
     if args.no_embed:
         # Development mode: cosine contribution is 0 for all candidates.
-        # Career (65%) + skills (10%) + edu (5%) + logistics still rank correctly.
+        # Career (70%) + skills (10%) + logistics still rank correctly.
         sim = np.zeros(n, dtype=np.float64)
     else:
         # matrix and jd_vec are L2-normalised at precompute time → cosine = dot product
@@ -127,12 +127,36 @@ def main() -> None:
 
     # ── 5. Honeypot exclusion ─────────────────────────────────────────────────
 
-    from detectors import get_honeypot_mask, get_stuffer_flag  # Phase 2 deliverables
+    from detectors import (
+        get_honeypot_mask, get_stuffer_flag,
+        get_anachronism_mask, get_education_mask,  # Phase 2b discrepancy gates
+    )
     print("Applying honeypot exclusion ...")
     honeypot_mask = get_honeypot_mask(features)  # True = flagged → exclude
-    surviving_mask = ~honeypot_mask
     n_excluded = honeypot_mask.sum()
-    print(f"  Excluded {n_excluded} honeypots; {surviving_mask.sum():,} surviving")
+    print(f"  Excluded {n_excluded} honeypots; {(~honeypot_mask).sum():,} surviving")
+
+    # ── 5b. Discrepancy gates (after honeypots; hard pre-sort exclusion) ───────
+    # Two impossibility gates the H1–H4 rules don't cover: a skill claimed for
+    # longer than the technology has existed, and an internally-impossible
+    # education timeline (degree-order reversal / overlapping full-time degrees).
+    print("Applying discrepancy gates (skill-anachronism + education) ...")
+    anachronism_mask = get_anachronism_mask(features)
+    education_mask = get_education_mask(features)
+    print(
+        f"  Skill-anachronism gate: {int(anachronism_mask.sum()):,} flagged "
+        f"(physically-impossible skill tenure) --> excluded"
+    )
+    print(
+        f"  Education-integrity gate: {int(education_mask.sum()):,} flagged "
+        f"(reversed/overlapping degrees) --> excluded"
+    )
+    surviving_mask = ~honeypot_mask & ~anachronism_mask & ~education_mask
+    union_excluded = int((~surviving_mask).sum())
+    print(
+        f"  All 3 gates combined: {union_excluded:,} excluded; "
+        f"{surviving_mask.sum():,} surviving"
+    )
 
     # Stuffer count diagnostic — quote THIS number in the interview, not the doc's 3.6%
     stuffer_mask = get_stuffer_flag(features)
@@ -140,7 +164,7 @@ def main() -> None:
     print(
         f"  Keyword-stuffer flag: {n_stuffers:,} / {len(features):,} "
         f"({100 * n_stuffers / len(features):.1f}%) — flagged only, "
-        f"career-first 65% weight already demotes these"
+        f"career-first 70% weight already demotes these"
     )
 
     # ── 6. Availability multiplier ────────────────────────────────────────────
