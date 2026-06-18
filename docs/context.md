@@ -92,13 +92,14 @@ Specific facts · JD connection · honest concerns · no hallucination · variat
 All figures from a complete pass over `candidates.jsonl`. Reference "now" = **2026-05-27**.
 
 ### 4.1 Honeypots — the highest-stakes finding
-- **Precise detector (4 deterministic rules) catches 68 records (0.068%)**, matching the organizer's stated *"~80"* `[SPEC: submission_spec.docx §7]` with near-zero collateral:
-  - **H1** — a role's `duration_months` exceeds months since its `start_date` (+3 mo slack). *(+3 absorbs date/`duration_months` rounding noise.)* `[CALL]`
-  - **H2** — summed role tenure exceeds stated `years_of_experience` × 12 by >30 mo. *(+30 allows overlapping/concurrent roles.)* `[CALL]`
-  - **H3** — stated YOE × 12 exceeds total career span (earliest start → now) by >18 mo. *(+18 allows uncaptured early internships; history caps at 10 roles.)* `[CALL]`
-  - **H4** — a skill at **{advanced, expert}** proficiency with **0 `duration_months`**. *(The spec's example says literally "expert"; we extend to "advanced" since both are impossible at 0 duration.)* `[CALL]`, maps to `[SPEC]` example *"expert proficiency in 10 skills with 0 years used."*
-- **The naive rule to AVOID — "skill `duration_months` > career length = honeypot":** fires on **13,436 records (13.4%)**, but catches only **5 of the 68** real honeypots while flagging 13,431 legitimate people (normal pre-career skill tenure). **It would delete `CAND_0000031`** — our archetype tier-5 (88-month Pinecone on a 72-month career = 7 yrs of vector-DB familiarity, entirely normal). The skill-duration pattern is itself a **trap that punishes over-filtering.** Do not use it.
-- **Honeypot-gap investigation** (six additional impossibility signatures tested): **role duration vs. calendar = 0 hits; multiple/ended current roles = 0; expert-vs-low-assessment = 0; single-role > YOE = 0 new (all in H1–H4); YOE vs. graduation-year = 8,899 new but an 8.9% false-positive cannon, only 6 attractive.** Conclusion: **no clean additional rule exists.** The ~12 we miss are almost certainly the *"8 years at a company founded 3 years ago"* type — **undetectable**, because the schema has **no company founding dates** and most employers are fictional (Hooli, Stark Industries, Dunder Mifflin). This is a **data ceiling every team hits**, not a fixable gap. Mitigation is the **top-150 audit guard** (§7, Phase 2), not more 100K-wide detection.
+- **Schema-detectable detector (H1–H4, 4 deterministic rules) catches 68 records (0.068%)**, matching the organizer's stated *"~80"* `[SPEC: submission_spec.docx §7]` with near-zero collateral:
+  - **H1** — a role's `duration_months` exceeds months since its `start_date` (+3 mo slack). `[CALL]`
+  - **H2** — summed role tenure exceeds stated `years_of_experience` × 12 by >30 mo. `[CALL]`
+  - **H3** — stated YOE × 12 exceeds total career span (earliest start → now) by >18 mo. `[CALL]`
+  - **H4** — a skill at **{advanced, expert}** proficiency with **0 `duration_months`**. Maps to `[SPEC]` example *"expert proficiency in 10 skills with 0 years used."* `[CALL]`
+- **H5 (founding-date, real companies)** `[CALL]` — for each role at a **real, non-fictional** company, flag if `role.start_date.year < company_founding_year`. Fictional employers (Hooli, Stark Industries, Dunder Mifflin, Wayne Enterprises, Initech, Pied Piper, Acme Corp, Globex Inc) are skipped per-role. All 55 real corpus companies are mapped; 5 have binding founding years: CRED (2018), Krutrim (2023), Sarvam AI (2023), Glance (2019), Rephrase.ai (2019). **Catches 250 additional records. Total honeypots: 318.** Founding years verified against primary/first-party sources only.
+- **Residual ~12 (fictional-employer founding-date cases):** undetectable — the schema has **no company founding dates** and fictional employers have none to look up. H5 and the top-150 audit both cover only known real companies, so this residual stays uncatchable. Bounded by: DQ requires **>10 honeypots in the top 100**; fictional-employer residual only fatal if ~11 of ~12 both reach the shortlist and out-score genuine fits (improbable — they carry no career-evidence advantage).
+- **The naive rule to AVOID — "skill `duration_months` > career length = honeypot":** fires on **13,436 records (13.4%)**, catches only **5 of the 68** schema-detectable honeypots, and **would delete `CAND_0000031`** (88-month Pinecone on a 72-month career = 7 yrs of normal pre-career vector-DB familiarity). Do not use it.
 
 ### 4.2 Population structure `[DATA]`
 | Segment | Count | Share |
@@ -155,7 +156,8 @@ Strict definition (discipline-signalling title **AND** career text evidencing a 
 1. Embed the JD **once**.
 2. Cosine similarity vs. the precomputed matrix (sub-second over 100K × 768; ~25 ms).
 3. Apply **rubric feature scores** (career-first; disqualifier gates → `gated`; logistics factors).
-4. **Hard-exclude H1–H4 honeypots** from the candidate set (before any further scoring).
+4. **Hard-exclude H1–H5 honeypots** from the candidate set (before any further scoring).
+4a. **Hard-exclude discrepancy-gate failures** (skill-anachronism + education-integrity) — applied after honeypots, before the multiplier.
 5. Apply the **continuous availability multiplier** over surviving rows.
 6. Sort by final (distinct) score descending → take top 100.
 7. **Top-150 audit guard** (§7, Phase 2) over the shortlist.
@@ -174,22 +176,23 @@ The dominant cost (embedding 100K) is in *precompute*, not the ranking step; the
 - **Repo: flat, legible, one reproduce command.** `precompute.py`, `rank.py`, `rubric.py`, `detectors.py`, `reasoning.py`, plus `artifacts/`, `decision.md`, `README.md`, `requirements.txt`, `submission_metadata.yaml`. A traceable pipeline, not a package.
 
 ### Phase 1 — The rubric (the differentiator)
-- **Disqualifiers are GATES/CAPS, not subtractions** (D1–D5 per §2, severity matched to JD language; **D4 fires only on entire-career consulting**, with the prior-product exception).
+- **Disqualifiers are GATES/CAPS, not subtractions** (D1–D6 per §2 + visa cap; severity matched to JD language; **D4 fires only on entire-career consulting** with the prior-product exception; **D6 title-chaser cap 0.50** on ≥3 employers with avg tenure <18 mo; **visa cap 0.55** on international-not-relocating).
 - **"Product over services" → credit multiplier on the *relevant* experience** (IT-Services + consulting names = services; Software/Fintech/E-commerce/Food Delivery = product).
 - **"Shipped a real ranking/search/rec system" → weighted heaviest, read from career descriptions, never the skills list** (rarest, highest signal; 374 candidates).
 - **"Wrote code recently" → recency gate on current role** (hands-on IC engineering within 18 mo).
 - **Secondary negatives** (title-chasers minor penalty; framework-enthusiasts folded into D2; closed-source acknowledged-but-light) and **logistics factors** (location/relocation, notice period, work mode per §2) included as minor weights.
 
 ### Phase 2 — Traps
-- **Honeypot detector: H1–H4 only. Explicitly NOT skill-duration-vs-career.** Hard-exclude flagged candidates from the top 100. **Precision-favoring**: catches 68 of ~80; the residual is documented honestly (do not claim "catches all"). `[refined]`
+- **Honeypot detector: H1–H5. Explicitly NOT skill-duration-vs-career.** Hard-exclude flagged candidates from the top 100. H1–H4 catch 68 schema-detectable honeypots; H5 (founding-date, real companies only) catches 250 additional. Total: 318. `[refined]`
+- **Discrepancy gates (after honeypots): skill-anachronism (955) + education-integrity (7,967).** Hard-exclude on physical impossibilities — technology claimed for more months than it has existed; internally-impossible degree timelines. Applied before the availability multiplier. Combined with H1–H5: 9,108 of 100,000 excluded (90,892 surviving). `[CALL, new]`
 - **Keyword-stuffer (3.6%): flag, do not double-penalize** (career-first already demotes; aggressive penalty false-positives genuine career-changers).
 - **Plain-language tier-5: a rescue, not a penalty** (semantic embedding + career-evidence keyword pass).
 - **Behavioral twins: handled by the availability multiplier**, not a bolt-on.
 - **Phase 2 closeout — Top-150 audit guard `[new]`:** after producing the shortlist, run an intensive consistency audit over the **top ~150** (cheap vs. 100K): re-run H1–H4, scrutinize any profile whose fit looks "too good," and check founding-date plausibility for *known real* companies (Swiggy, Razorpay, Paytm, etc.). Plus a human eyeball before submission. This is where the >10% disqualification risk actually lives. It catches founding-date implausibilities at **known real** companies (which 100K-wide rules also miss — the schema has no founding dates); the **fictional-employer residual stays uncatchable even here** and is bounded by the >10-in-top-100 DQ threshold, not the audit.
 
 ### Phase 3 — The ranker
-- **Feature weights: career-first** — starting point ≈ career-evidence + title-fit **65%**, embedding/semantic **20%**, skills list **10%**, education/certs **5%**, with logistics as a small modifier. **These are a starting point to calibrate by hand-ranking the 50-candidate sample** (Phase 1 checkpoint), not fixed constants.
-- **Availability multiplier: CONTINUOUS, gentle healthy slope (~0.7–1.0), steep ghost floor (~0.15). NOT a product of independent penalties.** Continuous so behavioral twins always separate; the floor triggers only on the *conjunction* of stale-beyond-180-days AND near-zero response AND not-open. **Highest-leverage calibration in the ranker — tune against synthetic twins (the sample has no strong twin pair or high-base ghost; §9) before trusting it.** `[refined]`
+- **Feature weights: career-first** — starting point ≈ career-evidence + title-fit **70%**, embedding/semantic **20%**, skills list **10%** (education/certs dropped 2026-06-18 — the JD names zero degree/institution criteria; weight folded into career), with logistics as a small modifier. **These are a starting point to calibrate by hand-ranking the 50-candidate sample** (Phase 1 checkpoint), not fixed constants.
+- **Availability multiplier: CONTINUOUS, gentle healthy slope (~0.7–1.0), steep ghost floor (~0.15). NOT a product of independent penalties.** Continuous so behavioral twins always separate; the floor triggers only on the *conjunction* of stale-beyond-**120**-days AND near-zero response AND not-open. (120-day threshold, calibrated to the 3.4% ghost population `[DATA]`; 180-day was too strict.) **Highest-leverage calibration in the ranker — tune against synthetic twins (the sample has no strong twin pair or high-base ghost; §9) before trusting it.** `[refined]`
 - **Tie-breaking: continuous distinct float scores** so the validator's `candidate_id`-ascending tie check never fires (see §3). Spec-mandated fallback if ties occur: `candidate_id` ascending.
 
 ### Phase 4 — Reasoning

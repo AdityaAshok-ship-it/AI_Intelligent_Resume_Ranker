@@ -43,6 +43,11 @@ Given a pool of **100,000 candidate profiles** and **one job description**, buil
 4. Full-career consulting-firm background (TCS, Infosys, Wipro, Accenture, Cognizant, Capgemini, etc.).
 5. Primary expertise in CV / speech / robotics with no NLP/IR exposure.
 
+### Secondary negative signals (JD "do NOT want," softer than the explicit disqualifiers)
+- **Title-chasers** — "switching companies every 1.5 years … we need someone who plans to be here for 3+ years." Detectable: 3+ employers with avg tenure < 18 months.
+- **Framework enthusiasts** — LangChain-tutorial GitHub history, demos over shipped systems. Overlaps with disqualifier #2; no separate strong signal beyond that.
+- **Closed-source / proprietary 5+ years with no external validation** (papers, talks, OSS). Largely unrepresentable in this schema; weak proxy only via `github_activity_score`.
+
 ### Key hiring signal (JD language)
 > The "right answer" to this JD is not keyword-matching. A candidate whose career history shows they built a recommendation system at a product company is a fit even if they don't write "RAG" or "Pinecone" in their profile. A Marketing Manager whose skills list contains every AI keyword is not a fit, no matter how complete the list.
 

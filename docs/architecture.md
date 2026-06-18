@@ -46,11 +46,12 @@ The ranking **step** that produces the CSV must satisfy, simultaneously (`submis
    │   ┌────────┴────────┐                       │ ───▶ │  1. cosine(JD, matrix)  → sim[100K]       │
    │   ▼                 ▼                       │      │  2. rubric base score   (career-first)    │
    │ bge-base-en-v1.5   feature parser           │      │  3. disqualifier gates  (cap/floor)       │
-   │ embeddings         (title/career flags,     │      │  4. honeypot H1–H4      (hard-exclude)    │
-   │   │                 disqualifier gates,      │      │  5. availability multiplier (continuous)  │
-   │   ▼                 logistics, availability  │      │  6. distinct-float final score            │
-   │ candidate matrix    inputs, honeypot flags)  │      │  7. sort ↓ → take top 100                 │
-   │   (307 MB on disk)        │                  │      │  8. top-150 audit guard                   │
+   │ embeddings         (title/career flags,     │      │  4. honeypot H1–H5      (hard-exclude)    │
+   │   │                 disqualifier gates,      │      │  4a.discrepancy gates   (anachronism+edu) │
+   │   ▼                 logistics, availability  │      │  5. availability multiplier (continuous)  │
+   │ candidate matrix    inputs, honeypot flags)  │      │  6. sort ↓ → top-150 window               │
+   │   (307 MB on disk)        │                  │      │  7. distinct-float (post-sort, top-150)   │
+   │                           │                  │      │  8. top-150 audit → top 100               │
    │            └──────────────┘                  │      │  9. fact-grounded reasoning (templates)   │
    │  + embed the fixed JD once → JD vector       │      │ 10. write CSV → validate_submission.py    │
    └───────────────────────────────────────────┘      └──────────────────────────────────────────┘
@@ -108,14 +109,14 @@ The final score is a **gated, availability-modulated rubric**, computed in a fix
 ### 5.0 Composition order `[CALL]` — precedence matters
 
 ```
-base   = 0.65·career_title + 0.20·embedding + 0.10·skills + 0.05·education + logistics_modifier
-gated  = apply_disqualifier_caps(base)          # most-restrictive cap wins; D1 ≈ hard floor
-gated  = drop_honeypots(gated)                  # H1–H4 = HARD row-exclusion, before any further scoring
-final  = gated × availability_multiplier         # over surviving rows; multiplier ∈ [~0.15, 1.0]
-final  = make_distinct(final)                    # unique floats → then sort ↓
+base   = 0.70·career_title + 0.20·embedding + 0.10·skills + logistics_modifier   # education dropped 2026-06-18 (no JD basis)
+gated  = apply_disqualifier_caps(base)          # most-restrictive cap wins; D1 ≈ hard floor; NO_SHIP_CAP=0.62 last
+surviving = drop_honeypots_and_discrepancy_gates(features)  # H1–H5 + anachronism + education: hard exclusion
+final  = where(surviving, gated × multiplier, −∞)  # multiplier ∈ [~0.15, 1.0]; excluded → −∞
+# sort ↓ → top-150 window → distinct-float (post-sort, EC-47/48) → top-150 audit → top 100
 ```
 
-**Why this order:** caps apply to `base` *before* the multiplier, so a disqualified candidate cannot be rescued by high availability (the multiplier is ≤1). A genuine tier-5 who is a behavioral ghost is correctly multiplied *down* from a high base. Reversing the order lets an available-but-disqualified candidate float into the top 100 — a Stage-5 credibility failure. **Honeypots are dropped immediately after gating**, before the multiplier and sort: a dropped row cannot resurface wherever the drop sits, so the early position is a legibility/defensibility choice ("a honeypot never enters scoring") rather than a hole being closed — and it keeps this document, the implementation plan, and the code on one identical order.
+**Why this order:** caps apply to `base` *before* the multiplier, so a disqualified candidate cannot be rescued by high availability (the multiplier is ≤1). A genuine tier-5 who is a behavioral ghost is correctly multiplied *down* from a high base. Reversing the order lets an available-but-disqualified candidate float into the top 100 — a Stage-5 credibility failure. **Honeypots and discrepancy gates are dropped immediately after gating**, before the multiplier and sort: a dropped row cannot resurface wherever the drop sits, so the early position is a legibility/defensibility choice ("a honeypot never enters scoring") rather than a hole being closed — and it keeps this document, the implementation plan, and the code on one identical order. **Distinct-float is applied post-sort on the top-150 window** (not pre-sort on the full array) to avoid the pre-sort risk: index-based offsets on an unsorted array can flip pairs closer than `(max_index_gap × ε) ≈ 1e-4`.
 
 ### 5.1 Rubric base — career-first `[CALL]`, calibrated, not fixed
 
@@ -123,13 +124,13 @@ Starting weights, to be tuned by hand-ranking the 50-candidate sample (Phase-1 c
 
 | Component | Weight | Source read | Notes |
 |---|---|---|---|
-| Career evidence + title fit | **65%** | `current_title` + `career_history[].description` | Highest signal; rule/keyword extraction for *built a real ranking/search/recommendation system*. **Never the skills list.** |
+| Career evidence + title fit | **70%** | `current_title` + `career_history[].description` | Highest signal; rule/keyword extraction for *built a real ranking/search/recommendation system*. **Never the skills list.** |
 | Embedding / semantic | 20% | `cosine(JD, candidate)` | Plain-language tier-5 rescue (§3). |
 | Skills list | 10% | `skills[]` | Near-noise; low weight by design. |
-| Education / certs | 5% | `education[]`, `certifications[]` | Minor. |
+| ~~Education / certs~~ | ~~5%~~ → **removed** | — | Dropped 2026-06-18: the JD names no education/degree/institution-tier criterion (only Indian cities); its 5% was folded into career. |
 | Logistics modifier | small | location/relocation, notice, work mode | Modifies, never dominates (§5.4). |
 
-> **Primary calibration risk** `[CALL]`: the 65% career component is the highest-weighted part, the main keyword-stuffer defense, *and* the least-specified — it is a keyword/rule extraction over free-text descriptions, which can itself be gamed in the `description` field (though the title gate and the difficulty of stuffing prose guard it). The score is won or lost in calibrating this 65% against the hand-ranked sample. Do not under-invest here in favor of the 20% embedding.
+> **Primary calibration risk** `[CALL]`: the 70% career component is the highest-weighted part, the main keyword-stuffer defense, *and* the least-specified — it is a keyword/rule extraction over free-text descriptions, which can itself be gamed in the `description` field (though the title gate and the difficulty of stuffing prose guard it). The score is won or lost in calibrating this 70% against the hand-ranked sample. Do not under-invest here in favor of the 20% embedding.
 
 ### 5.2 Disqualifier gates — caps/floors, not subtractions `[SPEC language + CALL operationalization]`
 
@@ -142,15 +143,18 @@ Severity mirrors the JD's *actual* wording (getting this wrong is a Stage-5 hit)
 | **D3** | Senior, no production code 18 mo | **firm** | current role architect/lead/manager-only, no hands-on IC code in 18 mo | heavy penalty |
 | **D4** | Entire-career consulting | **"do NOT want"** + exception | **all** companies are consulting firms (TCS/Infosys/Wipro/Accenture/Cognizant/Capgemini + extensions) | **cap — NOT if any prior product role** |
 | **D5** | CV/speech/robotics primary, no NLP/IR | **softer "do NOT want"** | primary expertise CV/speech/robotics, no NLP/IR evidence | strong penalty |
+| **D6** | Title-chaser / job-hopper | **"do NOT want"** (listed first) | ≥3 employers AND avg tenure < 18 mo (JD's literal "1.5 years") | **cap 0.50** |
+| **Visa** | International, not relocating | JD logistics ("we don't sponsor work visas") | `not is_india_based` AND `not willing_to_relocate` | **cap 0.55** |
+| **No-ship** | No career evidence of shipping a ranking/search/ML system | JD primary signal — "shipped ≥1 end-to-end system" | `built_real_system == False` — ensures a `built=False` candidate never outscores a `built=True` candidate at the scoring boundary via availability alone | **cap 0.62** (applied last in `apply_disqualifier_caps`) |
 
-Caps are applied to `base`; the most restrictive firing cap wins. D4's product-company exception is part of its firing condition: current-consulting-with-prior-product does **not** fire.
+Caps are applied to `base`; the most restrictive firing cap wins. D4's product-company exception is part of its firing condition: current-consulting-with-prior-product does **not** fire. D6 requires ≥3 employers so a single short stint never triggers it. The visa cap is a cap (not a floor) because the JD says "case-by-case."
 
 ### 5.3 Availability multiplier — continuous, gentle, ghost-harsh `[CALL, refined]`
 
 Applied as a **multiplier on `gated`**, not a stack of independent penalties.
 
 - **Healthy band:** ~**0.7–1.0** for engaged candidates.
-- **Ghost floor:** drops steeply toward ~**0.15** only on the **conjunction** of: `last_active` stale **>180 days** AND `recruiter_response_rate` near-zero AND `open_to_work_flag = false`.
+- **Ghost floor:** drops steeply toward ~**0.15** only on the **conjunction** of: `last_active` stale **>120 days** AND `recruiter_response_rate` near-zero AND `open_to_work_flag = false`. (120-day threshold targets the 3.4% ghost population `[DATA]`; 180-day was too strict, yielding only 0.8%.)
 - **Continuous (not bucketed)** so near-identical **behavioral twins** separate on their signal delta alone.
 
 **Why not a multiplicative stack** (`open × response × staleness`) `[DATA]`: the naive stack drives the **median candidate to 0.37×** and pushes **77% below 0.5×** — it flattens everyone instead of down-weighting the **3.4% ghosts**, and since NDCG@10 is half the score it actively demotes good fits. This is the single highest-leverage number in the ranker; calibrate the band and floor against **synthetic twins** — the sample has no tier-5 twin pair and no high-base ghost (§12) — before trusting a full run.
@@ -162,7 +166,7 @@ Minor weights, also surfaced as honest concerns in reasoning (Stage-4 explicitly
 - **Notice period:** short → small bonus; long → small penalty + honest-concern flag; **never disqualifying** (JD: a great fit with 120-day notice is still a great fit). (p50 = 90 days; 13.8% sub-30 `[DATA]`.)
 - **Work mode:** remote-only vs. hybrid → minor honest-concern flag. (~uniform across modes `[DATA]`.)
 
-### 5.5 Honeypot detection — four impossibility rules, hard-exclude `[CALL, refined]`
+### 5.5 Honeypot detection — five impossibility rules, hard-exclude `[CALL, refined]`
 
 Flagged candidates are **removed from the candidate set** before sorting (not score-adjusted), keeping them out of the top 100.
 
@@ -172,9 +176,21 @@ Flagged candidates are **removed from the candidate set** before sorting (not sc
 | **H2** | summed role tenure > `years_of_experience`×12 by >30 mo | +30 mo allows concurrent roles |
 | **H3** | `years_of_experience`×12 > total career span by >18 mo | +18 mo allows early internships |
 | **H4** | a skill at {advanced, expert} with **0 `duration_months`** | maps to the spec's "expert proficiency, 0 years" example |
+| **H5** | a role at a **real** company starts before that company's founding year | fictional/unknown companies are skipped per-role |
 
-- **Catches 68 of ~80** `[DATA]` with near-zero collateral. The ~12 missed are the *"8 years at a company founded 3 years ago"* type — **undetectable**: the schema has no company founding dates and most employers are fictional (Hooli, Stark Industries, Dunder Mifflin). The top-150 audit (§7) re-checks founding dates only for **known real** companies, so it does **not** cover this residual (which is the fictional-employer cases). What actually bounds the risk is the arithmetic: a Stage-3 DQ needs **>10 honeypots in the top 100**, so the residual is only fatal if ~11 of the ~12 uncaught ones both survive to the shortlist *and* out-score genuine fits — improbable, since they carry no career-evidence advantage. State it honestly: ~12 uncatchable, low residual risk — *not* "the audit catches them."
-- **The naive rule to AVOID** `[DATA]`: *"skill `duration_months` > career length = honeypot"* fires on **13,436 records (13.4%)**, catches only **5 of 68** real honeypots, and **would delete `CAND_0000031`** (verified: Recommendation Systems Engineer @ Swiggy, 6.0 YOE, Pinecone expert at 88 months — 7 years of normal pre-career vector-DB familiarity). Do not use it.
+- **H1–H4 catch 68** `[DATA]` with near-zero collateral. **H5 catches 252 additional** by hardcoding founding years for the 55 real companies in the corpus pool (8 are fictional and exempt: Hooli, Stark Industries, Dunder Mifflin, Wayne Enterprises, Initech, Pied Piper, Acme Corp, Globex Inc). Binding companies: CRED (2018), Krutrim (2023), Sarvam AI (2023), Glance (2019), Rephrase.ai (2019). **Total honeypots caught: 318.** All founding years verified against primary/first-party sources only.
+- **Residual ~12 uncaught** are "8 years at a company founded 3 years ago" at **fictional** employers — undetectable because the schema has no founding dates and most employers are fictional. The top-150 audit (§7) covers only **known real** companies, so it does **not** cover the fictional-employer residual. Bounded by arithmetic: DQ needs **>10 honeypots in the top 100**; the fictional residual is only fatal if ~11 of ~12 uncaught ones both reach the shortlist and out-score real fits — improbable. State it honestly: ~12 uncatchable, low residual risk.
+- **The naive rule to AVOID** `[DATA]`: *"skill `duration_months` > career length = honeypot"* fires on **13,436 records (13.4%)**, catches only **5 of 68** schema-detectable honeypots, and **would delete `CAND_0000031`** (verified: Recommendation Systems Engineer @ Swiggy, 6.0 YOE, Pinecone expert at 88 months — 7 years of normal pre-career vector-DB familiarity). Do not use it.
+
+### 5.6 Discrepancy gates — skill-anachronism and education-integrity `[CALL, new]`
+
+Applied **after** honeypot exclusion, before the availability multiplier. Hard-exclude on physical impossibilities; not score adjustments.
+
+**Skill-anachronism gate:** flag if a candidate claims a **named, datable technology** for `duration_months > months_since_inception + 6` (6-month slack for preprint/beta use). Only datable named artifacts are gated; generic concepts (NLP, Embeddings, Prompt Engineering, "Fine-tuning LLMs"), pre-2018 tools (FAISS, PyTorch), and fuzzy terms are intentionally excluded. 15 technologies gated (LoRA, QLoRA, PEFT, RAG, LangChain, LlamaIndex, Pinecone, Milvus, Qdrant, Weaviate, pgvector, Sentence-Transformers, Haystack, OpenSearch, HF Transformers), all inception dates primary-source verified. **Impact: 955 résumés.**
+
+**Education-integrity gate:** flag if a degree timeline is internally impossible — (a) higher degree ends before lower starts, (b) Bachelor's concurrent with PhD (rank-gap ≥ 2; same-level and adjacent-level overlaps are allowed), (c) degree ends before it starts. Degree *names* are never judged. **Impact: 7,967 résumés.**
+
+Combined with H1–H5, total excluded: **9,108 of 100,000** (90,892 surviving).
 
 ---
 
@@ -183,16 +199,17 @@ Flagged candidates are **removed from the candidate set** before sorting (not sc
 1. **Load artifacts** — candidate matrix (307 MB), feature store, JD vector. No model load.
 2. **Cosine similarity** `cosine(jd_vector, candidate_matrix)` → `sim[100K]` (~25 ms via BLAS).
 3. **Rubric base** (§5.1) — vectorized over 100K rows.
-4. **Disqualifier caps** (§5.2) → `gated`.
-5. **Honeypot exclusion** (§5.5) — drop H1–H4 flagged rows from the candidate set entirely (hard exclusion, before any further scoring).
-6. **Availability multiplier** (§5.3) over the surviving rows → `final = gated × multiplier`.
-7. **Distinct-float guarantee** (§8) — ensure no two `final` scores are exactly equal.
-8. **Sort `final` descending → take top 100.** Sorting makes `score` non-increasing with rank automatically (validator requirement).
-9. **Top-150 audit guard** (§7).
-10. **Fact-grounded reasoning** for the top 100 (§7).
-11. **Write CSV → run `validate_submission.py`.**
+4. **Disqualifier caps** (§5.2, D1–D6 + visa cap) → `gated`.
+5. **Honeypot exclusion** (§5.5) — drop H1–H5 flagged rows from the candidate set entirely (hard exclusion, before any further scoring).
+6. **Discrepancy gates** (§5.6) — drop skill-anachronism and education-integrity flagged rows. `surviving = ~honeypot & ~anachronism & ~education`.
+7. **Availability multiplier** (§5.3) over the surviving rows → `final = gated × multiplier` (excluded rows → −∞).
+8. **Sort `final` descending → take top 150** for the audit window. Sorting makes `score` non-increasing with rank automatically.
+9. **Distinct-float guarantee** (§8) — apply post-sort, descending offsets on the top-150 window only (`rank k` receives `(150 − k) × 1e-9`). Best candidate keeps the largest positive offset, preserving sort order while making all 150 scores strictly distinct (EC-47, EC-48). Applied post-sort to avoid the pre-sort flip risk.
+10. **Top-150 audit guard** (§7) → **take top 100.**
+11. **Fact-grounded reasoning** for the top 100 (§7).
+12. **Write CSV → run `validate_submission.py`.**
 
-Steps 2–11 run in seconds (§10). The dominant cost lives in precompute.
+Steps 2–12 run in seconds (§10). The dominant cost lives in precompute.
 
 ---
 
@@ -254,6 +271,12 @@ No model in this path → "network off" is satisfied structurally. The expensive
 | Output schema | `candidate_id,rank,score,reasoning`, 100 rows | `submission_spec` §2–3 | ✅ verified |
 | Validator: ties allowed, `candidate_id`-asc enforced; score non-increasing | — | `validate_submission.py` | ✅ verified in code |
 | Honeypots ~80, forced tier 0, >10% in top 100 = DQ at Stage 3 | — | `submission_spec` §7, §5 | ✅ verified |
+| H1–H4 schema-detectable honeypots | **68** `[DATA]` | `context.md` §4.1 | ✅ verified |
+| H5 founding-date honeypots (real companies only) | **+250 new** → 318 total | `change.md` §2 | ✅ verified; 5 binding companies |
+| Skill-anachronism excluded | **955** | `change.md` §3 | ✅ verified; 15 tech dates primary-sourced |
+| Education-integrity excluded | **7,967** | `change.md` §4 | ✅ verified |
+| D6 title-chaser cap (0.50) | **1,260/100K** | `change.md` §11 | ✅ verified |
+| Visa cap (0.55) | **17,756/100K** | `change.md` §12 | ✅ verified |
 | 5-stage pipeline + 6 Stage-4 reasoning checks | — | `submission_spec` §4–5 | ✅ verified |
 | Max 3 submissions, last valid final, no live leaderboard | — | `submission_spec` §3, §8 | ✅ verified |
 | 23 redrob signals | — | `redrob_signals_doc`, `candidate_schema.json` | ✅ verified |
@@ -271,11 +294,11 @@ No model in this path → "network off" is satisfied structurally. The expensive
 ## 12. Known risks and data ceilings `[CALL]`
 
 - **Top-10 ordering cannot be validated, only reasoned (highest).** NDCG@10 + NDCG@50 are 80% of the composite, won on the *order* of the genuine tier-5s. But the 50-sample contains **one** tier-5 (`CAND_0000031`) — re-derived on review — so calibration can separate the one fit from the 49 non-fits (trivial) yet **cannot** tune the top-10 ordering that decides the score. Treat the tier-5 ordering rules as a first-class, **written**, JD-traced deliverable (the Stage-5 substitute for validation), and exercise the rubric on **synthetic tier-5 variants** (perturbations of the archetype). The honest interview line is "top-10 order is reasoned, not tuned."
-- **Career-rubric (65%) extraction:** keyword/rule over free-text descriptions — the main thing to hand-tune against the sample, and gameable in the `description` field (guarded by the title gate + the difficulty of stuffing prose). Most of the *separable* score lives here; invest here, not in the 20% embedding.
+- **Career-rubric (70%) extraction:** keyword/rule over free-text descriptions — the main thing to hand-tune against the sample, and gameable in the `description` field (guarded by the title gate + the difficulty of stuffing prose). Most of the *separable* score lives here; invest here, not in the 20% embedding.
 - **Disqualifier gates D2/D3/D5 can silently delete a top-10 candidate, and their false-positive rate is unmeasured.** A mis-firing D5 (a real NLP engineer who once shipped vision) or D3 (a Staff/Principal IC read as "manager-only" from the title) caps exactly the high-value candidates NDCG@10 rewards — the same archetype-deletion failure the skill-duration rule was rejected for. **Measure each gate's firing rate on the full 100K and inspect who it caps**; soften any gate that catches a plausible fit. D2 is the fuzziest (proxy: ML only in a sub-12-mo current role, no pre-LLM ML) — don't overclaim its precision.
 - **Availability-multiplier calibration:** the one high-leverage number, but the sample has **no tier-5 twin pair and no high-base ghost** — only two low-tier ghosts (`CAND_0000029`, `CAND_0000043`), which confirm the floor *fires* but don't tune the case that matters (a strong candidate who is also disengaged). Calibrate the 0.7–1.0 band and ~0.15 floor against **synthetic twins** (the archetype cloned, identical but for the signal). Too steep → unseen NDCG@10 loss.
 - **Reasoning template collisions:** 3–4 structural variants over 100 rows means similar candidates can collide into near-identical strings that read as the "name-insert templating" Stage-4 penalizes. A 5-string spot-read won't catch a collision between rows #37 and #61 — run a **pairwise near-duplicate check across all 100** and force divergence on any flagged pair.
-- **Honeypot residual (~12 uncaught):** founding-date cases the schema can't represent (fictional employers); the top-150 audit covers only known real companies, so the residual stays uncatchable and is bounded by the >10-in-top-100 DQ threshold (§5.5), not by the audit. Stated honestly at Stage 5.
+- **Honeypot residual (~12 uncaught):** founding-date cases at **fictional** employers (Hooli, Stark, Dunder Mifflin — schema has no founding dates; H5 is skipped for fictional companies). The top-150 audit and H5 both cover only known real companies, so the fictional-employer residual stays uncatchable and is bounded by the >10-in-top-100 DQ threshold (§5.5). Stated honestly at Stage 5.
 - **Parser field noise:** in the sample, `career_history[].description` and `.industry` don't reliably track the role title (a "Marketing Manager" with a mechanical-engineering description; repeated descriptions across roles). The parser reads these as clean signal for `product_vs_services` and `built_real_system` — **eyeball the parsed flags against raw text on the 50 before calibrating.**
 - **False positives on genuine career-changers:** the dataset has real backend→ML transitioners; don't let keyword overlap or a single services employer cap them.
 - **Weights are hand-tuned on a 50-sample, not learned:** defensible for this task — say so plainly; don't imply a trained learning-to-rank model.

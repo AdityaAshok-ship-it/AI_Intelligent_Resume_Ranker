@@ -16,7 +16,7 @@
 
 ## 0. Input / schema / parser edge cases (Phase 0)
 
-The parser is the upstream of everything; a coercion bug here poisons the 65% rubric, the gates, and the honeypots at once. The data is **dense on every parser-critical field** `[DATA]` — but three fields are sparse and carry **sentinels that are not real values**.
+The parser is the upstream of everything; a coercion bug here poisons the 70% rubric, the gates, and the honeypots at once. The data is **dense on every parser-critical field** `[DATA]` — but three fields are sparse and carry **sentinels that are not real values**.
 
 | ID | Edge case | Where it bites | Correct behavior | Status |
 |---|---|---|---|---|
@@ -25,7 +25,7 @@ The parser is the upstream of everything; a coercion bug here poisons the 65% ru
 | **EC-3** | `skill_assessment_scores` present for only **24%** `[DATA]` (empty `{}` for the rest). | A rule that reads "no assessment" as "failed assessment". | Absent dict = no signal, **not** a low signal. Any rule touching it handles the empty case explicitly. | **HANDLED** |
 | **EC-4** | `career_history[].end_date` is `null` for the current role (`is_current == true`) `[SPEC schema]`. | H1 timeline math (`duration_months` vs months-since-`start_date`) and career-span computation dereference `end_date`. | For the current role, treat `end_date` as **now (2026-05-27)**; never `None`-arithmetic. The span's right edge is "now". | **VERIFY** (assert no null reaches date math) |
 | **EC-5** | `career_history` length **1** for **18.5%** of pool `[DATA]`; single role → career span = current tenure, so an inflated `years_of_experience` trips H3. | H3 false positives on legitimate single-role people. | H3's **+18 mo slack** is exactly the buffer that keeps legit single-role candidates out. Do not tighten it without re-measuring this 18.5% population. | **HANDLED** ([[EC-26]]) |
-| **EC-6** | `description` / `.industry` **do not reliably track the role title** in the sample `[DATA]` — a "Marketing Manager" with a mechanical-engineering description; identical text repeated across `CAND_0000031`'s two roles. | `built_real_system` (regex over `description`) and `product_vs_services` (over `industry`) ingest noise/contradiction → corrupts the 65% inputs silently. | The flags run on noisier text than assumed. **Eyeball all 50 sample flags against raw text before calibrating** (Phase 0 exit gate). If a flag disagrees with a human read, the extraction is wrong — fix here, cheaply. | **VERIFY** (Phase 0 gate) |
+| **EC-6** | `description` / `.industry` **do not reliably track the role title** in the sample `[DATA]` — a "Marketing Manager" with a mechanical-engineering description; identical text repeated across `CAND_0000031`'s two roles. | `built_real_system` (regex over `description`) and `product_vs_services` (over `industry`) ingest noise/contradiction → corrupts the 70% inputs silently. | The flags run on noisier text than assumed. **Eyeball all 50 sample flags against raw text before calibrating** (Phase 0 exit gate). If a flag disagrees with a human read, the extraction is wrong — fix here, cheaply. | **VERIFY** (Phase 0 gate) |
 | **EC-7** | `skills[]` is the keyword-stuffer attack surface. | If embedded, buzzword skill lists inflate cosine for non-fits. | **Exclude `skills[]` from embedding text** and from `built_real_system`; embed only `current_title + headline + summary + career_history[].description`. | **HANDLED** ([[EC-12]]) |
 | **EC-8** | `education` may be **empty** (`minItems: 0`); `certifications` / `languages` are **optional** (absent key, not null). | A scorer that assumes the keys exist KeyErrors on a sparse profile. | Education = 5% weight; treat empty as zero-contribution, not a penalty. Guard optional keys with `.get()`. | **HANDLED** |
 | **EC-9** | `notice_period_days` is **quantized** to {0,15,30,45,60,90,120,150} (schema allows 0–180), mode **90** `[DATA]`. Strict `<30` = **22 records (0.0%)** — an empty branch. | A "short-notice bonus" keyed on `notice < 30` fires on **~nobody** — a dead branch that looks active in code. | Key the buyout-tier bonus on **`<= 30`** (= 13.8%, the populated tier the JD's "buy out up to 30 days" actually means). Treat 120/150 as honest-concern band, never disqualifying. | **HANDLED** (corrected from "13.8% sub-30") |
@@ -40,14 +40,14 @@ The embedding is a *secondary* signal whose job is the **plain-language tier-5 r
 
 | ID | Edge case | Correct behavior | Status |
 |---|---|---|---|
-| **EC-12** | **Keyword homonym false-match** `[DATA, sample-verified]`: a Marketing Manager's *"ranked on the first page of search for high-competition keywords"* (SEO) trips a naive `rank`+`search` pass. | The 65% extractor must disambiguate "ranked **on** search results" (SEO outcome) from "shipped **a** ranking/search **system**". Title gate + career-evidence regex (shipped ranking/retrieval/recommendation *systems*) — not bare keyword presence. | **VERIFY** ([[EC-18]]) |
+| **EC-12** | **Keyword homonym false-match** `[DATA, sample-verified]`: a Marketing Manager's *"ranked on the first page of search for high-competition keywords"* (SEO) trips a naive `rank`+`search` pass. | The 70% extractor must disambiguate "ranked **on** search results" (SEO outcome) from "shipped **a** ranking/search **system**". Title gate + career-evidence regex (shipped ranking/retrieval/recommendation *systems*) — not bare keyword presence. | **VERIFY** ([[EC-18]]) |
 | **EC-13** | **Plain-language tier-5**: a candidate who *built* a recommendation system at a product company but never writes "RAG" or "Pinecone" `[SPEC: JD final note]`. | The 20% embedding + career-evidence pass must **rescue** them above keyword-rich non-fits. This is the embedding's whole reason to exist. | **VERIFY** (calibration) |
-| **EC-14** | **Buzzword-stuffed prose** scores high on cosine even with no real career evidence (e.g. a summary full of "Building with LLMs", "RAG"). | The career-first 65% weight + keyword-stuffer flag must **dominate** the topical boost the embedding gives buzzword prose. Confirm `CAND_0000021` (PM, AI buzzwords in skills *and* summary) is demoted far below `CAND_0000031`. | **VERIFY** (Phase 2 gate) |
+| **EC-14** | **Buzzword-stuffed prose** scores high on cosine even with no real career evidence (e.g. a summary full of "Building with LLMs", "RAG"). | The career-first 70% weight + keyword-stuffer flag must **dominate** the topical boost the embedding gives buzzword prose. Confirm `CAND_0000021` (PM, AI buzzwords in skills *and* summary) is demoted far below `CAND_0000031`. | **VERIFY** (Phase 2 gate) |
 | **EC-15** | **Repeated/duplicated `description` text across roles** (`CAND_0000031`'s two roles carry identical text) `[DATA]`. | Embedding double-counts the same prose; acceptable for cosine but means description-based evidence regex must not "count" the same achievement twice. | **FLAG** (de-dupe evidence hits per candidate) |
 
 ---
 
-## 2. Rubric & career-evidence edge cases (65% component — the differentiator)
+## 2. Rubric & career-evidence edge cases (70% component — the differentiator)
 
 This is the highest-weighted, least-specified component. Most score-separation and most false-positive risk live here.
 
@@ -88,8 +88,32 @@ The H1–H4 union catches **exactly 68** `[DATA, 2026-06-15]` — the number the
 | **EC-30** | **H2 — legitimate concurrent roles** inflate summed tenure above `years_of_experience×12`. | **+30 mo slack** allows genuine overlap; fire only when `Σtenure > YOE×12 + 30`. | **HANDLED** |
 | **EC-31** | **H3 — single-role candidate** with early internships inflating YOE above career span. | **+18 mo slack** allows early internships; protects the 18.5% single-role population ([[EC-5]]). Fire only when `YOE×12 > span + 18`. | **HANDLED** |
 | **EC-32** | **H4** — skill at {advanced, expert} with `duration_months == 0` ("expert, 0 years"). | Hard impossibility → flag. Distinguish from a skill with a *positive* small duration (legit) and from `duration_months` absent (handle as not-firing, not zero). | **HANDLED** |
-| **EC-33** | **Residual ~12 honeypots** — "8 years at a company founded 3 years ago" at **fictional** employers (Hooli, Stark, Dunder Mifflin). Schema has **no company founding dates**. | **RESIDUAL, uncatchable.** The top-150 audit checks founding dates only for **known real** companies, so it does **not** cover this. Bounded by arithmetic: DQ needs **>10 honeypots in top 100**, so fatal only if ~11 of ~12 both surface *and* out-score real fits — improbable (they carry no career-evidence advantage). **Do not claim the audit catches them.** | **RESIDUAL** (stated honestly) |
+| **EC-33** | **Residual ~12 honeypots** — "8 years at a company founded 3 years ago" at **fictional** employers (Hooli, Stark, Dunder Mifflin, Wayne Enterprises, Initech, Pied Piper, Acme Corp, Globex Inc). Schema has no founding dates for fictional companies; H5 skips fictional employers per-role. | **RESIDUAL, uncatchable for fictional employers.** H5 catches founding-date cases at **real** companies (250 new). The top-150 audit and H5 both cover only known real companies, so the fictional-employer residual is uncatchable. Bounded by arithmetic: DQ needs **>10 honeypots in top 100**, so fatal only if ~11 of ~12 both surface *and* out-score real fits — improbable. **Do not claim the audit or H5 cover fictional-company residual.** | **RESIDUAL** (stated honestly; real-company cases handled by H5) |
+| **EC-33a** | **H5 false-positive risk** — a role at a real company that started the same year the company was founded. | H5 uses strict `<` (year granularity): a company founded in 2018 may legitimately hire in 2018. Boundary cases (same year) do **not** fire. | **HANDLED** |
 | **EC-34** | **Honeypot reaches the shortlist** (a near-miss perfect-title honeypot like `CAND_0010770` in the top 100). | **Top-150 audit guard**: re-run H1–H4 over the top ~150, scrutinize "too good to be true", founding-date check for *known real* companies. **Deterministic + logged; the human eyeball is a check, never a manual CSV edit** (manual edits between code and output are a Stage-3/4 red flag). | **HANDLED** |
+
+---
+
+## 4a. Discrepancy gate edge cases (skill-anachronism + education-integrity)
+
+Applied after honeypot exclusion, before the availability multiplier. Hard-excludes on physical impossibilities.
+
+| ID | Edge case | Correct behavior | Status |
+|---|---|---|---|
+| **EC-33b** | **Skill-anachronism: generic concepts** (NLP, Embeddings, Vector Search, Prompt Engineering, "Fine-tuning LLMs") have no defensible inception date. | These are intentionally **not gated** — claiming 60 months of "NLP" is not impossible. Only datable named artifacts with primary-sourced inception dates are gated. | **HANDLED** |
+| **EC-33c** | **Skill-anachronism: pre-2018 tools** (FAISS, PyTorch, TensorFlow, scikit-learn, Elasticsearch) predate the corpus's max skill duration — never impossible. | Intentionally **not gated**. | **HANDLED** |
+| **EC-33d** | **Skill-anachronism false-positive** — a candidate uses a technology name informally before the named artifact's PyPI launch (e.g., used the concept before the named library shipped). | The 6-month slack absorbs preprint/beta use. Anything tighter would false-positive real early adopters. Tunable knob. | **HANDLED** |
+| **EC-33e** | **Education-integrity: same-level overlap** (two master's, or B.Tech + M.Tech). | **Allowed** — a candidate may legitimately pursue two correspondence/remote or dual degrees at once. The rank-gap ≥ 2 rule (Bachelor's concurrent with PhD) catches the impossible case without firing on adjacent-level overlaps. | **HANDLED** |
+| **EC-33f** | **Education-integrity: empty education array** (`minItems: 0`). | No degrees → no checks to run → not flagged. Education absence is not an impossibility. | **HANDLED** |
+
+## 4b. Disqualifier gate edge cases — D6 and visa cap
+
+| ID | Edge case | Correct behavior | Status |
+|---|---|---|---|
+| **EC-33g** | **D6 title-chaser: 1–2-role career** — a candidate with one short stint who is otherwise a good fit. | D6 requires **≥3 employers**. A 1–2-role career is never flagged, even if the single role is short. | **HANDLED** |
+| **EC-33h** | **D6 title-chaser: a single long role + two short stints** — avg tenure may be under 18 mo even if the person committed at one company. | The ≥3-employer AND <18 mo average conjunction means a candidate with one 5-year role + two 6-month stints (avg 28 mo) does NOT fire. The threshold is the average, so one long commitment saves them. | **HANDLED** |
+| **EC-33i** | **Visa cap: international candidate `willing_to_relocate == true`**. | Receives **full credit** — the visa cap only fires on `not is_india_based AND not willing_to_relocate`. | **HANDLED** |
+| **EC-33j** | **Visa cap and D1–D6 co-fire on one candidate.** | **Most-restrictive cap wins** ([[EC-27]]). Caps apply to `base` before the multiplier. | **HANDLED** |
 
 ---
 
@@ -99,7 +123,7 @@ A **multiplier on `gated`** (∈ ~[0.15, 1.0]), continuous not bucketed. Its cal
 
 | ID | Edge case | Correct behavior | Status |
 |---|---|---|---|
-| **EC-35** | **Ghost = a conjunction, not any single signal.** Only `staleness_days > 180` **AND** `recruiter_response_rate` near-zero **AND** `open_to_work_flag == false` → floor ~0.15. | A candidate meeting **only one or two** of the three must **not** be floored. The floor fires on the 3.4% true ghosts only. | **HANDLED** |
+| **EC-35** | **Ghost = a conjunction, not any single signal.** Only `staleness_days > 120` **AND** `recruiter_response_rate` near-zero **AND** `open_to_work_flag == false` → floor ~0.15. (120-day threshold targets the 3.4% ghost population; 180-day yields only 0.8%.) | A candidate meeting **only one or two** of the three must **not** be floored. The floor fires on the 3.4% true ghosts only. | **HANDLED** |
 | **EC-36** | **`open_to_work_flag == false` but active and responsive** (35.3% are open; 65% are not — being "not open" is the norm, not a ghost). | Not a ghost. The flag alone is weak; only the full conjunction floors. Healthy band 0.7–1.0. | **HANDLED** |
 | **EC-37** | **High-base ghost** — a strong tier-5 who is disengaged. | The gentle slope must demote them **below the engaged twin** but **not below an unrelated weaker-but-engaged** candidate. This is the case the multiplier exists for — and the sample **cannot** test it. | **VERIFY** (synthetic twins) |
 | **EC-38** | **Behavioral twins** — two candidates identical but for the availability signal. | Continuous (not bucketed) multiplier so they **separate on the signal delta alone**. Clone the archetype into a twin pair, confirm the ghost lands below the engaged twin without over-crushing. **Log the band/floor + this test in `decision.md`** — the only evidence the number was reasoned. | **VERIFY** |
@@ -126,7 +150,7 @@ The JD is explicit that logistics are *honest concerns*, **not disqualifiers** (
 | ID | Edge case | Correct behavior | Status |
 |---|---|---|---|
 | **EC-45** | **Caps vs multiplier order.** If the multiplier applied *before* caps, an available-but-disqualified candidate could float into the top 100. | **Caps before multiplier** — the one ordering choice that actually changes scores. ([[EC-27]]) | **HANDLED** |
-| **EC-46** | **Honeypot-exclusion position.** `architecture.md` §5.0/§6 places the multiplier (step 5) **before** honeypot exclusion (step 6); `implementation-plan.md` Phase 3 places exclusion (step 5) **before** the multiplier (step 6). | Outcome is **identical** (a dropped row never resurfaces) — but **two canonical docs stating the pipeline in two different orders is a Stage-5 "contradicts the docs" trap**. **Fix: make `architecture.md` and the code agree on one order** (exclusion-before-multiplier, per Phase-1 composition). Don't re-prove equivalence in the interview — remove the contradiction. | **VERIFY** (eval.md punch-list #4) |
+| **EC-46** | **Honeypot-exclusion position.** All three canonical sources now agree: honeypot exclusion (H1–H5) and discrepancy gates precede the availability multiplier. `architecture.md` §5.0 and §6, `implementation-plan.md` Phase 3, and `rank.py` all place exclusion before the multiplier. | Order is: caps → honeypot exclusion → discrepancy gates → multiplier → sort → distinct-float (post-sort) → audit → top 100. | **HANDLED** |
 
 ---
 
@@ -197,7 +221,7 @@ The threshold cases most likely to hide an off-by-one or sentinel bug — verify
 | H2 | `Σtenure − YOE×12` | fire only when `> +30 mo` |
 | H3 | `YOE×12 − career_span` | fire only when `> +18 mo` |
 | H4 | skill duration | fire when `== 0` at {advanced, expert} only |
-| Ghost floor | conjunction | `staleness > 180` **AND** `rrr ≈ 0` **AND** `open == false` (all three) |
+| Ghost floor | conjunction | `staleness > 120` **AND** `rrr ≈ 0` **AND** `open == false` (all three) |
 | Notice bonus | `notice_period_days` | key on **`<= 30`** (not `< 30` — empty) |
 | Honeypot DQ | honeypots in top 100 | DQ at **`> 10`** |
 | Sentinels | `github_activity_score == −1`, `offer_acceptance_rate == −1` | branch to **absent**, never arithmetic |
