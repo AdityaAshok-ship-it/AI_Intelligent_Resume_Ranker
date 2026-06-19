@@ -12,7 +12,7 @@ team_members:
     role: "Solo participant"
 
 github_repo: "https://github.com/AdityaAshok-ship-it/AI_Intelligent_Resume_Ranker"
-sandbox_link: "https://huggingface.co/spaces/placeholder/redrob-ranker"
+sandbox_link: "https://intelligent-resume-ranker.streamlit.app/"
 reproduce_command: "python rank.py --out submission.csv"
 
 compute:

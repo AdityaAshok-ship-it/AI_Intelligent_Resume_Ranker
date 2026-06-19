@@ -148,7 +148,7 @@ Prints the first 5 reasonings for human spot-read and runs a pairwise near-dupli
 
 ## Sandbox
 
-**Primary:** HuggingFace Spaces (Streamlit) — link in `submission_metadata.yaml`.
+**Primary:** Streamlit Cloud — https://intelligent-resume-ranker.streamlit.app/
 
 **Backup — Docker:**
 
